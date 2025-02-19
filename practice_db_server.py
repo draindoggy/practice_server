@@ -4,7 +4,7 @@ from psycopg2 import sql
 
 app = Flask(__name__)
 
-DATABASE_URL = "postgresql://postgres:cCLkjTKUtmcXHuItbeCmfeuZijZxVrEr@nozomi.proxy.rlwy.net:11883/railway"
+DATABASE_URL = "postgresql://practice_xsfw_user:TgBx3Xb1YwNIdK9HBKNqVXRHhTrVsHSN@dpg-cuq78qdsvqrc73f808sg-a/practice_xsfw"
 
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL)
@@ -14,7 +14,7 @@ def get_db_connection():
 def get_data():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT username, password FROM users')
+    cur.execute('SELECT username, secret_phraze FROM users')
     rows = cur.fetchall()
 
     colnames = [desc[0] for desc in cur.description]
