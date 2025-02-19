@@ -4,7 +4,7 @@ from psycopg2 import sql
 
 app = Flask(__name__)
 
-DATABASE_URL = "postgresql://practice_xsfw_user:TgBx3Xb1YwNIdK9HBKNqVXRHhTrVsHSN@dpg-cuq78qdsvqrc73f808sg-a/practice_xsfw"
+DATABASE_URL = "postgresql://practice_xsfw_user:TgBx3Xb1YwNIdK9HBKNqVXRHhTrVsHSN@dpg-cuq78qdsvqrc73f808sg-a.frankfurt-postgres.render.com/practice_xsfw"
 
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL)
