@@ -1,0 +1,463 @@
+package com.example.calendar
+
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.android.volley.Request
+import com.android.volley.toolbox.StringRequest
+import com.android.volley.toolbox.Volley
+import com.example.calendar.ui.theme.CalendarTheme
+import org.json.JSONArray
+import org.json.JSONObject
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+
+class MainActivity : ComponentActivity() {
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            CalendarTheme {
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    AppContent(modifier = Modifier.padding(innerPadding))
+                }
+            }
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun AppContent(modifier: Modifier = Modifier) {
+    var isAuthenticated by remember { mutableStateOf(false) }
+
+    if (isAuthenticated) {
+        CalendarScreen(modifier)
+    } else {
+        LoginScreen(
+            onAuthenticated = { isAuthenticated = true },
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+fun LoginScreen(onAuthenticated: () -> Unit, modifier: Modifier = Modifier) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val message by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    Column(
+        modifier = modifier.fillMaxSize().padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text("логин") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("пароль") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = { login(username, password, context, onAuthenticated) }) {
+            Text("войти")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (message.isNotEmpty()) {
+            Text(text = message, color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+fun login(username: String, password: String, context: android.content.Context, onAuthenticated: () -> Unit) {
+    val url = "https://practice-server-five.vercel.app/data"
+    val queue = Volley.newRequestQueue(context)
+
+    val stringRequest = StringRequest(
+        Request.Method.GET, url,
+        { response ->
+            Log.d("LoginActivity", "Response: $response")
+            try {
+                val jsonArray = JSONArray(response)
+                var isAuthSuccess = false
+
+                for (i in 0 until jsonArray.length()) {
+                    val jsonObject = jsonArray.getJSONObject(i)
+                    val serverUsername = jsonObject.getString("username")
+                    val serverPassword = jsonObject.getString("secret_phraze")
+
+                    if (username == serverUsername && password == serverPassword) {
+                        isAuthSuccess = true
+                        break
+                    }
+                }
+
+                if (isAuthSuccess) {
+                    Toast.makeText(context, "Успешная авторизация", Toast.LENGTH_SHORT).show()
+                    onAuthenticated()
+                } else {
+                    Toast.makeText(context, "Ошибка авторизации", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        },
+        { error ->
+            Toast.makeText(context, "Ошибка: ${error.message}", Toast.LENGTH_SHORT).show()
+        }
+    )
+
+    queue.add(stringRequest)
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun CalendarScreen(modifier: Modifier = Modifier) {
+    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+    var events by remember { mutableStateOf<List<Event>>(emptyList()) }
+    var selectedEvent by remember { mutableStateOf<Event?>(null) }
+    var showUpcomingEvents by remember { mutableStateOf(false) }
+    var showPastEvents by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val currentDate = LocalDate.now()
+
+    LaunchedEffect(Unit) {
+        fetchEvents(context) { loadedEvents ->
+            events = loadedEvents
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top,
+            modifier = Modifier.weight(1f)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Button(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
+                    Text("<")
+                }
+                Text(
+                    text = currentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                Button(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
+                    Text(">")
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            MonthView(
+                yearMonth = currentMonth,
+                events = events,
+                onDayClick = { date ->
+                    val event = events.find {
+                        it.date.toLocalDate() == date
+                    }
+                    selectedEvent = event
+                }
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Button(
+                onClick = {
+                    showUpcomingEvents = true
+                    showPastEvents = false
+                }
+            ) {
+                Text("предстоящие")
+            }
+            Button(
+                onClick = {
+                    showPastEvents = true
+                    showUpcomingEvents = false
+                }
+            ) {
+                Text("прошедшие")
+            }
+        }
+    }
+
+    if (showUpcomingEvents) {
+        val upcomingEvents = events.filter {
+            it.date.toLocalDate().isAfter(currentDate) || it.date.toLocalDate().isEqual(currentDate)
+        }
+        AlertDialog(
+            onDismissRequest = { showUpcomingEvents = false },
+            title = { Text("предстоящие события") },
+            text = {
+                LazyColumn {
+                    items(upcomingEvents) { event ->
+                        EventItem(
+                            event = event,
+                            onClick = {
+                                selectedEvent = event
+                                showUpcomingEvents = false
+                            }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showUpcomingEvents = false }) {
+                    Text("закрыть")
+                }
+            }
+        )
+    }
+
+    if (showPastEvents) {
+        val pastEvents = events.filter {
+            it.date.toLocalDate().isBefore(currentDate)
+        }
+        AlertDialog(
+            onDismissRequest = { showPastEvents = false },
+            title = { Text("прошедшие события") },
+            text = {
+                LazyColumn {
+                    items(pastEvents) { event ->
+                        EventItem(
+                            event = event,
+                            onClick = {
+                                selectedEvent = event
+                                showPastEvents = false
+                            }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showPastEvents = false }) {
+                    Text("закрыть")
+                }
+            }
+        )
+    }
+
+    selectedEvent?.let { event ->
+        EventDetail(event = event, onDismiss = { selectedEvent = null })
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun MonthView(
+    yearMonth: YearMonth,
+    events: List<Event>,
+    onDayClick: (LocalDate) -> Unit
+) {
+    val daysInMonth = yearMonth.lengthOfMonth()
+    val firstDayOfMonth = yearMonth.atDay(1).dayOfWeek.value % 7
+    val currentDate = LocalDate.now()
+
+    LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.fillMaxWidth()) {
+        items(7) { dayOfWeek ->
+            Text(
+                text = DateTimeFormatter.ofPattern("EEE").format(LocalDate.of(2023, 1, dayOfWeek + 1)),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(4.dp)
+            )
+        }
+
+        items(firstDayOfMonth) {
+            Spacer(modifier = Modifier.size(40.dp))
+        }
+
+        items(daysInMonth) { day ->
+            val date = yearMonth.atDay(day + 1)
+            val event = events.find { it.date.toLocalDate() == date }
+            val backgroundColor = when {
+                event != null && (date.isAfter(currentDate) || date.isEqual(currentDate)) ->
+                    Color.Green.copy(alpha = 0.2f)
+                event != null && date.isBefore(currentDate) ->
+                    Color.Red.copy(alpha = 0.2f)
+                else -> Color.Transparent
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(backgroundColor)
+                    .clickable { onDayClick(date) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "${day + 1}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+fun fetchEvents(context: android.content.Context, onEventsLoaded: (List<Event>) -> Unit) {
+    val url = "https://practice-server-five.vercel.app/calendar"
+    val queue = Volley.newRequestQueue(context)
+
+    val stringRequest = StringRequest(
+        Request.Method.GET, url,
+        { response ->
+            try {
+                val events = Event.parseEvents(response)
+                onEventsLoaded(events)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Ошибка парсинга событий: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        },
+        { error ->
+            Toast.makeText(context, "Ошибка загрузки событий: ${error.message}", Toast.LENGTH_SHORT).show()
+        }
+    )
+
+    queue.add(stringRequest)
+}
+
+data class Event(
+    val id: Int,
+    val name: String,
+    val date: ZonedDateTime,
+    val eventFullNumber: String,
+    val lotNumber: Int,
+    val lotName: String,
+    val organizerName: String,
+    val organizerInn: String,
+    val organizerKpp: String,
+    val organizerOgrn: String,
+    val userFullname: String,
+    val status: String
+) {
+    companion object {
+        @RequiresApi(Build.VERSION_CODES.O)
+        fun fromJson(jsonObject: JSONObject): Event {
+            val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
+            return Event(
+                id = jsonObject.getInt("id"),
+                name = jsonObject.getString("name"),
+                date = ZonedDateTime.parse(jsonObject.getString("date"), dateFormatter),
+                eventFullNumber = jsonObject.getString("event_full_number"),
+                lotNumber = jsonObject.getInt("lot_number"),
+                lotName = jsonObject.getString("lot_name"),
+                organizerName = jsonObject.getString("organizer_name"),
+                organizerInn = jsonObject.getString("organizer_inn"),
+                organizerKpp = jsonObject.getString("organizer_kpp"),
+                organizerOgrn = jsonObject.getString("organizer_ogrn"),
+                userFullname = jsonObject.getString("user_fullname"),
+                status = jsonObject.getString("status")
+            )
+        }
+
+        @RequiresApi(Build.VERSION_CODES.O)
+        fun parseEvents(jsonString: String): List<Event> {
+            val jsonArray = JSONArray(jsonString)
+            val events = mutableListOf<Event>()
+            for (i in 0 until jsonArray.length()) {
+                events.add(fromJson(jsonArray.getJSONObject(i)))
+            }
+            return events
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun EventItem(event: Event, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(8.dp)
+    ) {
+        Text(
+            text = event.name,
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Text(
+            text = event.date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun EventDetail(event: Event, onDismiss: () -> Unit) {
+    var showDialog by remember { mutableStateOf(true) }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false; onDismiss() },
+            title = { Text(event.name) },
+            text = {
+                Column {
+                    Text("номер события: ${event.eventFullNumber}")
+                    Text("лот №: ${event.lotNumber}: ${event.lotName}")
+                    Text("дата начала: ${event.date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))}")
+                    Text("организатор:")
+                    Text("имя: ${event.organizerName}")
+                    Text("ИНН: ${event.organizerInn}")
+                    Text("КПП: ${event.organizerKpp}")
+                    Text("ОГРН: ${event.organizerOgrn}")
+                    Text("участник: ${event.userFullname}")
+                }
+            },
+            confirmButton = {
+                Button(onClick = { /* Логика "Подвести итоги" */ }) {
+                    Text("подвести итоги")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDialog = false; onDismiss() }) {
+                    Text("закрыть")
+                }
+            }
+        )
+    }
+}
